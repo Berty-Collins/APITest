@@ -2,164 +2,217 @@ import mwparserfromhell
 import re
 import logging
 from typing import Optional, List, Dict
-from .parser_models import MatchData, Team, Player, MapPlay, Operator, MapPickBan
+from .parser_models import MatchData, Team, Player, MapPlay, Operator, MapPickBan, Map
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Known aliases or common variations for operator names
+# Comprehensive Operator Aliases
 OPERATOR_ALIASES = {
-    "jager": "Jäger",
+    # Attackers
+    "sledge": "Sledge",
+    "thatcher": "Thatcher",
+    "ash": "Ash",
+    "thermite": "Thermite",
+    "twitch": "Twitch",
+    "montagne": "Montagne",
+    "glaz": "Glaz",
+    "fuze": "Fuze",
+    "blitz": "Blitz",
+    "iq": "IQ",
+    "buck": "Buck",
+    "blackbeard": "Blackbeard",
     "capitao": "Capitão",
-    "caveira": "Caveira",
     "hibana": "Hibana",
-    "echo": "Echo",
+    "jackal": "Jackal",
     "ying": "Ying",
-    "ela": "Ela",
+    "zofia": "Zofia",
     "dokkaebi": "Dokkaebi",
-    "vigil": "Vigil",
     "lion": "Lion",
     "finka": "Finka",
+    "maverick": "Maverick",
+    "nomad": "Nomad",
+    "gridlock": "Gridlock",
+    "nokk": "Nøkk", # Nøkk
+    "amaru": "Amaru",
+    "kali": "Kali",
+    "iana": "Iana",
+    "ace": "Ace",
+    "zero": "Zero",
+    "flores": "Flores",
+    "osa": "Osa",
+    "sens": "Sens",
+    "grim": "Grim",
+    "brava": "Brava",
+    "ram": "Ram",
+    # Defenders
+    "smoke": "Smoke",
+    "mute": "Mute",
+    "castle": "Castle",
+    "pulse": "Pulse",
+    "doc": "Doc",
+    "rook": "Rook",
+    "kapkan": "Kapkan",
+    "tachanka": "Tachanka",
+    "jager": "Jäger", # Jäger
+    "jäger": "Jäger",
+    "bandit": "Bandit",
+    "frost": "Frost",
+    "valkyrie": "Valkyrie",
+    "caveira": "Caveira",
+    "echo": "Echo",
+    "mira": "Mira",
+    "lesion": "Lesion",
+    "ela": "Ela",
+    "vigil": "Vigil",
     "maestro": "Maestro",
+    "alibi": "Alibi",
     "clash": "Clash",
     "kaid": "Kaid",
     "mozzie": "Mozzie",
-    "nokk": "Nøkk",
     "warden": "Warden",
     "goyo": "Goyo",
-    "amaru": "Amaru",
-    "kali": "Kali",
+    "wamai": "Wamai",
     "oryx": "Oryx",
-    "iana": "Iana",
     "melusi": "Melusi",
-    "ace": "Ace",
-    "zero": "Zero",
     "aruni": "Aruni",
-    "flores": "Flores",
     "thunderbird": "Thunderbird",
-    "osa": "Osa",
     "thorn": "Thorn",
     "azami": "Azami",
-    "sens": "Sens",
-    "grim": "Grim",
     "solis": "Solis",
-    "brava": "Brava",
     "fenrir": "Fenrir",
-    "ram": "Ram",
-    # Add more as needed
+    # Common misspellings or variations
+    "jager": "Jäger",
+    "capitao": "Capitão",
+    "nokk": "Nøkk",
+    # Add any other common variations you encounter
 }
 
 def normalize_operator_name(name: str) -> str:
-    name = name.strip().lower()
-    name = OPERATOR_ALIASES.get(name, name.capitalize())
-    # Further specific normalizations if an op has multiple common display names
-    if name == "Smoke": return "Smoke" # Ensure correct capitalization if it was 'smoke'
-    if name == "Mute": return "Mute"
-    # ... etc for all original operators if needed, though capitalize should handle most
-    return name
+    if not isinstance(name, str):
+        return "UnknownOperator"
+
+    name_stripped = name.strip()
+    name_lower = name_stripped.lower()
+
+    # Check aliases first
+    if name_lower in OPERATOR_ALIASES:
+        return OPERATOR_ALIASES[name_lower]
+
+    # If not in aliases, try capitalizing (handles cases like "ash" -> "Ash")
+    # and also handles already correctly capitalized names.
+    # This also helps if an alias was missed but the capitalization is the only issue.
+    return name_stripped.capitalize()
 
 class WikitextParser:
-    """
-    Parses raw wikitext from Liquipedia pages to extract structured data,
-    primarily focusing on match details.
-    """
-
     def __init__(self):
         pass
 
     def _extract_template_param(self, template, param_name: str, default: Optional[str] = None) -> Optional[str]:
-        """Helper to get a parameter value from a mwparserfromhell template."""
         if template.has(param_name):
-            return str(template.get(param_name).value).strip()
+            value_node = template.get(param_name).value
+            try:
+                return str(value_node.strip_code(normalize=True, collapse=True)).strip()
+            except Exception:
+                return str(value_node).strip()
         return default
 
     def _extract_team_name(self, template, param_prefix: str) -> str:
-        """Extracts team name, checking for {{TeamLink}} or direct name."""
         name_param = f"{param_prefix}name"
+        direct_param = param_prefix
+
+        name_to_check = None
         if template.has(name_param):
-            value = template.get(name_param).value
-            # Check if the value itself is a template (e.g., {{TeamLink|G2 Esports}})
-            nested_templates = value.filter_templates()
+            name_to_check = template.get(name_param).value
+        elif template.has(direct_param):
+             name_to_check = template.get(direct_param).value
+
+        if name_to_check:
+            nested_templates = name_to_check.filter_templates()
             if nested_templates and (nested_templates[0].name.matches("TeamLink") or nested_templates[0].name.matches("tl")):
                 if nested_templates[0].has(1):
                     return str(nested_templates[0].get(1).value).strip()
-            return str(value).strip() # Direct name
-
-        # Fallback for some older or different template structures if team name is directly in param like 'team1' or 'team2'
-        # This is less common for structured match templates but good to be aware of.
-        # if template.has(param_prefix): # e.g. param_prefix = 'team1'
-        #     value = template.get(param_prefix).value
-        #     # ... similar logic to check for TeamLink ...
-        #     return str(value).strip()
+            return str(name_to_check.strip_code(normalize=True, collapse=True)).strip()
 
         return "Unknown Team"
 
 
     def parse_match_page(self, page_title: str, wikitext: str) -> Optional[MatchData]:
-        """
-        Parses the wikitext of a match page (typically a subpage of a tournament).
-        This is a complex task as template usage can vary.
-        We'll start by looking for common templates like {{MatchRecap}} or {{MatchMaps}}.
-        """
         logging.info(f"Starting to parse match page: {page_title}")
         parsed_wikitext = mwparserfromhell.parse(wikitext)
 
-        # Try to find general match information first (teams, date, tournament)
-        # This might be in a {{MatchRecap}}, {{Infobox Match}}, or similar
-        # For now, let's assume primary data is within a {{MatchMaps}} or similar detailed template
-        # Or it could be that team names are passed as arguments or inferred from page context.
+        tournament_name_from_page = page_title.split('/')[0] if '/' in page_title else page_title
 
-        team1_name = "Team A (Placeholder)" # Placeholder, to be found
-        team2_name = "Team B (Placeholder)" # Placeholder
-        tournament_name_from_page = page_title.split('/')[0] if '/' in page_title else page_title # Basic inference
+        potential_match_templates = ["MatchMaps", "MatchResults", "Scorebox", "MatchRecap", "BracketMatch", "MatchSummary"]
 
-        # Attempt to find {{MatchSchedule}} or {{MatchRecap}} for overall scores and team names
-        # This part is highly dependent on Liquipedia's specific templates for R6
-        # For example, {{MatchMaps}} template seems to be a common one.
+        match_template = None
+        for tpl_name_pattern in potential_match_templates:
+            found_templates = parsed_wikitext.filter_templates(matches=lambda t: t.name.lower().strip().startswith(tpl_name_pattern.lower()))
+            if found_templates:
+                match_template = found_templates[0]
+                logging.info(f"Found match template: {match_template.name.strip()}")
+                break
 
-        match_summary_template = None
-        # Look for templates that define the match participants and overall score.
-        # Common names could be MatchSummary, Infobox Match, BracketMatch, etc.
-        # This will require inspection of actual Liquipedia R6 pages.
-        # For now, we'll try to extract from something like MatchMaps or assume they are known.
-
-        # Let's assume we find a template that gives us the main teams.
-        # Example: {{SomeMatchOverview |team1=G2 Esports |team2=FaZe Clan |tournament=Six Invitational 2023}}
-        # This is hypothetical. The real structure will be based on `test_data/six_invitational_2023_match.txt`
-
-        # Try to find {{MatchSeries}} or {{MatchMaps}} which often contains detailed per-map info
-        # In R6, {{MatchMaps}} is very common for detailed results.
-        match_maps_templates = parsed_wikitext.filter_templates(matches=lambda t: t.name.matches("MatchMaps") or t.name.matches("MatchResults"))
-
-        if not match_maps_templates:
-            logging.warning(f"No {{MatchMaps}} or {{MatchResults}} template found on page {page_title}. Cannot parse detailed match data yet.")
-            # We might still be able to get some info if other templates exist.
-            # For now, return None if this critical template is missing.
+        if not match_template:
+            logging.warning(f"No suitable match overview template found on page {page_title}.")
+            map_plays = self._parse_individual_map_plays(parsed_wikitext, "UnknownTeam1", "UnknownTeam2")
+            if map_plays:
+                return MatchData(
+                    team1=Team(name="Team 1 (Inferred)"),
+                    team2=Team(name="Team 2 (Inferred)"),
+                    match_id=page_title,
+                    maps_played=map_plays,
+                    tournament_name=tournament_name_from_page,
+                    raw_wikitext=wikitext,
+                    source_url=f"https://liquipedia.net/rainbowsix/{page_title.replace(' ', '_')}"
+                )
             return None
 
-        # Assuming the first MatchMaps template is the primary one for the match
-        # This might need adjustment if multiple such templates exist for different stages
-        match_template = match_maps_templates[0]
+        team1_name = self._extract_team_name(match_template, "team1") or \
+                     self._extract_team_name(match_template, "t1") or \
+                     self._extract_template_param(match_template, "team1name") or \
+                     self._extract_template_param(match_template, "opponent1") or \
+                     "Team 1"
+        team2_name = self._extract_team_name(match_template, "team2") or \
+                     self._extract_team_name(match_template, "t2") or \
+                     self._extract_template_param(match_template, "team2name") or \
+                     self._extract_template_param(match_template, "opponent2") or \
+                     "Team 2"
 
-        team1_name = self._extract_template_param(match_template, "team1", "Team 1")
-        team2_name = self._extract_template_param(match_template, "team2", "Team 2")
+        team1_score_overall_str = self._extract_template_param(match_template, "team1score", "0") or \
+                                  self._extract_template_param(match_template, "score1", "0") or \
+                                  self._extract_template_param(match_template, "games1", "0") or "0"
+        team2_score_overall_str = self._extract_template_param(match_template, "team2score", "0") or \
+                                  self._extract_template_param(match_template, "score2", "0") or \
+                                  self._extract_template_param(match_template, "games2", "0") or "0"
 
-        # Extracting overall scores (maps won)
-        team1_score_overall = int(self._extract_template_param(match_template, "team1score", "0") or "0")
-        team2_score_overall = int(self._extract_template_param(match_template, "team2score", "0") or "0")
+        team1_score_overall = int(team1_score_overall_str) if team1_score_overall_str.strip().isdigit() else 0
+        team2_score_overall = int(team2_score_overall_str) if team2_score_overall_str.strip().isdigit() else 0
 
         date_str = self._extract_template_param(match_template, "date")
 
         winner_team_name = None
-        if team1_score_overall > team2_score_overall:
+        if match_template.has("winner"):
+            winner_val = self._extract_template_param(match_template, "winner")
+            if winner_val == "1": winner_team_name = team1_name
+            elif winner_val == "2": winner_team_name = team2_name
+            elif winner_val and winner_val.lower() not in ["draw", "skip", "tbd", " forfeits"]: # direct name, ignore draw/skip
+                 # Check if winner_val is one of the team names to avoid assigning "W" or similar as winner
+                if winner_val.lower() == team1_name.lower():
+                    winner_team_name = team1_name
+                elif winner_val.lower() == team2_name.lower():
+                    winner_team_name = team2_name
+                elif winner_val not in ["1","2","0","TBD","TBA", "N/A", ""]: # if it's not a numerical indicator or placeholder
+                     winner_team_name = winner_val # Assume it's a direct name if not 1 or 2
+        elif team1_score_overall > team2_score_overall:
             winner_team_name = team1_name
         elif team2_score_overall > team1_score_overall:
             winner_team_name = team2_name
 
         match_data = MatchData(
-            match_id=page_title,
             team1=Team(name=team1_name),
             team2=Team(name=team2_name),
+            match_id=page_title,
             team1_score=team1_score_overall,
             team2_score=team2_score_overall,
             winner_team_name=winner_team_name,
@@ -169,228 +222,192 @@ class WikitextParser:
             source_url=f"https://liquipedia.net/rainbowsix/{page_title.replace(' ', '_')}"
         )
 
-        # --- Parse Map Picks and Bans (if available in MatchMaps header) ---
-        # Example: {{MatchMaps|map1pick=TeamA|map1=Oregon|map2ban=TeamB|map2=Kafe...}}
-        # This is highly speculative and depends on the exact template params used.
-        # For now, we'll focus on per-map details often found in sub-templates.
+        match_data.maps_played = self._parse_individual_map_plays(match_template, team1_name, team2_name)
 
-        # --- Parse individual maps played ---
-        # {{MatchMaps}} usually has map1, map2, ... parameters which themselves can be templates
-        # like {{MapRecap}} or direct data.
-        # Or, it might use parameters like |map1map=Oregon |map1team1score=7 |map1team2score=5 ...
+        # Recalculate overall score based on map wins if scores were initially 0 or seem inconsistent
+        if team1_score_overall == 0 and team2_score_overall == 0 and match_data.maps_played:
+            calculated_t1_score = sum(1 for mp in match_data.maps_played if mp.winner_team_name == team1_name)
+            calculated_t2_score = sum(1 for mp in match_data.maps_played if mp.winner_team_name == team2_name)
+            match_data.team1_score = calculated_t1_score
+            match_data.team2_score = calculated_t2_score
+            if calculated_t1_score > calculated_t2_score:
+                match_data.winner_team_name = team1_name
+            elif calculated_t2_score > calculated_t1_score:
+                match_data.winner_team_name = team2_name
+            elif calculated_t1_score == calculated_t2_score and calculated_t1_score > 0 : # if it's a draw in maps
+                 match_data.winner_team_name = "Draw" # Or handle as per specific tournament rules for draws
 
+        logging.info(f"Successfully parsed match data for {page_title}. Maps found: {len(match_data.maps_played)}")
+        return match_data
+
+    def _parse_individual_map_plays(self, wikitext_node, team1_name: str, team2_name: str) -> List[MapPlay]:
+        maps_played_list: List[MapPlay] = []
         i = 1
         while True:
-            map_param_name = f"map{i}"
-            if not match_template.has(map_param_name):
-                # Some templates might use map1map, map2map etc. directly if not nested
-                map_name_direct = self._extract_template_param(match_template, f"map{i}map")
-                if not map_name_direct:
-                    break # No more maps
+            map_name = None
+            map_play_data = {} # Store intermediate data for the current map
+            current_map_processed = False
 
-                # This is a simplified path if map data is flat in MatchMaps
-                map_play = MapPlay(map_name=map_name_direct)
-                map_play.team1_score = int(self._extract_template_param(match_template, f"map{i}team1score", "0") or "0")
-                map_play.team2_score = int(self._extract_template_param(match_template, f"map{i}team2score", "0") or "0")
+            # Try to find a nested map template first, e.g. map1={{Map ...}}
+            # Common Liquipedia template for map details is often just {{Map}}.
+            # Sometimes it's {{MapV2}}, {{MapRecapV2}} or game-specific like {{Game}}.
+            map_param_node = wikitext_node.get(f"map{i}") if hasattr(wikitext_node, 'has') and wikitext_node.has(f"map{i}") else None
 
-                # Winner of this specific map
+            map_recap_template = None
+            if map_param_node:
+                map_sub_templates = map_param_node.value.filter_templates(recursive=False)
+                if map_sub_templates and (map_sub_templates[0].name.lower().strip().startswith("map") or "recap" in map_sub_templates[0].name.lower().strip() or map_sub_templates[0].name.lower().strip().startswith("game")):
+                    map_recap_template = map_sub_templates[0]
+                    map_name = self._extract_template_param(map_recap_template, "map")
+                elif not map_sub_templates: # mapX=MapName (direct value, not a template)
+                     map_name = str(map_param_node.value.strip_code(normalize=True, collapse=True)).strip()
+
+            # If map_name wasn't found in a nested template via mapX, try flat parameters like mapXmap
+            if not map_name:
+                map_name = self._extract_template_param(wikitext_node, f"map{i}map")
+
+            if not map_name or map_name.lower() in ["none", "tbd", "", "default", "d", "decider"]: # Skip if map name is invalid or placeholder
+                # Check if there's a 'vod' parameter for this map index, which might indicate a played map without explicit name
+                vod_param = self._extract_template_param(wikitext_node, f"map{i}vod") or self._extract_template_param(wikitext_node, f"vodgame{i}")
+                if not vod_param and not match_template.has(f"map{i+1}map") and not match_template.has(f"map{i+1}"): # Check if there's a next map
+                    break # No more maps likely
+                i += 1
+                if i > 10: break # Safety break
+                continue
+
+            map_play = MapPlay(map_name=map_name)
+
+            # Scores: Try from sub-template first, then from main template
+            if map_recap_template:
+                map_play.team1_score = int(self._extract_template_param(map_recap_template, "score1", self._extract_template_param(map_recap_template, "team1score", "0")) or "0")
+                map_play.team2_score = int(self._extract_template_param(map_recap_template, "score2", self._extract_template_param(map_recap_template, "team2score", "0")) or "0")
+                score_str_sub = self._extract_template_param(map_recap_template, "score")
+                if score_str_sub and '-' in score_str_sub and (map_play.team1_score == 0 and map_play.team2_score == 0):
+                    s1, s2 = score_str_sub.split('-', 1)
+                    map_play.team1_score = int(s1.strip()) if s1.strip().isdigit() else 0
+                    map_play.team2_score = int(s2.strip()) if s2.strip().isdigit() else 0
+
+                winner_flag = self._extract_template_param(map_recap_template, "winner") or self._extract_template_param(map_recap_template, "mapwin")
+                if winner_flag == "1": map_play.winner_team_name = team1_name
+                elif winner_flag == "2": map_play.winner_team_name = team2_name
+
+            # Fallback to scores from the main MatchMaps template if not found in sub-template or no sub-template
+            if map_play.team1_score == 0 and map_play.team2_score == 0:
+                score_str = self._extract_template_param(wikitext_node, f"map{i}score")
+                if score_str and '-' in score_str:
+                    s1, s2 = score_str.split('-', 1)
+                    map_play.team1_score = int(s1.strip()) if s1.strip().isdigit() else 0
+                    map_play.team2_score = int(s2.strip()) if s2.strip().isdigit() else 0
+                else:
+                    map_play.team1_score = int(self._extract_template_param(wikitext_node, f"map{i}team1score", "0") or "0")
+                    map_play.team2_score = int(self._extract_template_param(wikitext_node, f"map{i}team2score", "0") or "0")
+
+            # Determine map winner if not set by 'mapwin' or 'winner' flag
+            if not map_play.winner_team_name:
                 if map_play.team1_score > map_play.team2_score:
                     map_play.winner_team_name = team1_name
                 elif map_play.team2_score > map_play.team1_score:
                     map_play.winner_team_name = team2_name
 
-                # Operator bans for this map (highly specific to template structure)
-                # Example: map1team1ban1, map1team1ban2, map1team2ban1, map1team2ban2
-                for ban_idx in range(1, 6): # Assuming up to 5 bans per team, usually 2-3
-                    t1_ban = self._extract_template_param(match_template, f"map{i}team1ban{ban_idx}")
-                    if t1_ban: map_play.team1_operator_bans.append(normalize_operator_name(t1_ban))
-                    t2_ban = self._extract_template_param(match_template, f"map{i}team2ban{ban_idx}")
-                    if t2_ban: map_play.team2_operator_bans.append(normalize_operator_name(t2_ban))
+            # Operator bans and picks
+            # This part is highly dependent on the specific templates used for R6 (e.g., {{OperatorLineup}}, {{PickBan}})
+            # It might be directly in MatchMaps (mapXteamYbanZ, mapXteamYopZ) or nested in mapX's sub-template's 'details' param
+            op_lineup_source_template = map_recap_template if map_recap_template and map_recap_template.has("details") else wikitext_node
 
-                # Operator picks for this map (even more specific)
-                # Example: map1team1op1, map1team1op2, ..., map1team2op1, ...
-                # This is a very simplified model. Real R6 templates might have attack/defense phase ops.
-                for op_idx in range(1, 6): # 5 operators per team
-                    t1_op = self._extract_template_param(match_template, f"map{i}team1op{op_idx}")
-                    if t1_op: map_play.team1_operator_picks_overall.append(Operator(name=normalize_operator_name(t1_op)))
-                    t2_op = self._extract_template_param(match_template, f"map{i}team2op{op_idx}")
-                    if t2_op: map_play.team2_operator_picks_overall.append(Operator(name=normalize_operator_name(t2_op)))
+            if map_recap_template and map_recap_template.has("details"):
+                 details_param_value = map_recap_template.get("details").value
+                 op_lineup_tpl_list = details_param_value.filter_templates(matches=lambda t: t.name.lower().strip() in ["operatorlineup", "pickban", "picksandbans", "r6operatorscoreboard"])
+                 if op_lineup_tpl_list:
+                     op_lineup_source_template = op_lineup_tpl_list[0]
 
-                if map_play.map_name and map_play.map_name.lower() != "none" and map_play.map_name.lower() != "tbd":
-                     match_data.maps_played.append(map_play)
+            for ban_idx in range(1, 6): # Max 5 bans
+                t1_b = self._extract_template_param(op_lineup_source_template, f"t1ban{ban_idx}") or \
+                       self._extract_template_param(op_lineup_source_template, f"team1ban{ban_idx}") or \
+                       self._extract_template_param(op_lineup_source_template, f"b1{ban_idx}") # Common in some templates
+                if t1_b and t1_b.lower() != "none": map_play.team1_operator_bans.append(normalize_operator_name(t1_b))
 
-            else: # map_param_name exists, likely means it contains a nested template like {{Map}} or {{MapRecap}}
-                map_details_node = match_template.get(map_param_name).value
+                t2_b = self._extract_template_param(op_lineup_source_template, f"t2ban{ban_idx}") or \
+                       self._extract_template_param(op_lineup_source_template, f"team2ban{ban_idx}") or \
+                       self._extract_template_param(op_lineup_source_template, f"b2{ban_idx}")
+                if t2_b and t2_b.lower() != "none": map_play.team2_operator_bans.append(normalize_operator_name(t2_b))
 
-                # Check if map_details_node is itself a template
-                map_sub_templates = map_details_node.filter_templates()
+            for op_idx in range(1, 6): # 5 operators per team
+                t1_op = self._extract_template_param(op_lineup_source_template, f"t1p{op_idx}") or \
+                        self._extract_template_param(op_lineup_source_template, f"team1op{op_idx}")
+                if t1_op and t1_op.lower() != "none": map_play.team1_operator_picks_overall.append(Operator(name=normalize_operator_name(t1_op)))
 
-                if not map_sub_templates:
-                    # Sometimes map name is directly there, and scores are separate
-                    # e.g. map1=Oregon, map1score=7-5
-                    map_name_val = str(map_details_node).strip()
-                    if not map_name_val or map_name_val.lower() == "none" or map_name_val.lower() == "tbd":
-                        i += 1
-                        continue # Skip if map name is 'none' or 'tbd'
+                t2_op = self._extract_template_param(op_lineup_source_template, f"t2p{op_idx}") or \
+                        self._extract_template_param(op_lineup_source_template, f"team2op{op_idx}")
+                if t2_op and t2_op.lower() != "none": map_play.team2_operator_picks_overall.append(Operator(name=normalize_operator_name(t2_op)))
 
-                    map_play = MapPlay(map_name=map_name_val)
-                    score_str = self._extract_template_param(match_template, f"map{i}score") # e.g., "7-5"
-                    if score_str and '-' in score_str:
-                        s1, s2 = score_str.split('-', 1)
-                        map_play.team1_score = int(s1.strip())
-                        map_play.team2_score = int(s2.strip())
-                    else: # Try individual scores
-                         map_play.team1_score = int(self._extract_template_param(match_template, f"map{i}team1score", "0") or "0")
-                         map_play.team2_score = int(self._extract_template_param(match_template, f"map{i}team2score", "0") or "0")
+            if map_play.map_name: # Ensure map_name is valid before adding
+                maps_played_list.append(map_play)
 
-
-                    # Winner of this specific map
-                    if map_play.team1_score > map_play.team2_score:
-                        map_play.winner_team_name = team1_name
-                    elif map_play.team2_score > map_play.team1_score:
-                        map_play.winner_team_name = team2_name
-
-                    # Operator bans and picks would follow similar logic as above, using map{i}teamXbanY etc.
-                    for ban_idx in range(1, 6):
-                        t1_ban = self._extract_template_param(match_template, f"map{i}team1ban{ban_idx}")
-                        if t1_ban: map_play.team1_operator_bans.append(normalize_operator_name(t1_ban))
-                        t2_ban = self._extract_template_param(match_template, f"map{i}team2ban{ban_idx}")
-                        if t2_ban: map_play.team2_operator_bans.append(normalize_operator_name(t2_ban))
-
-                    for op_idx in range(1, 6):
-                        t1_op = self._extract_template_param(match_template, f"map{i}team1op{op_idx}")
-                        if t1_op: map_play.team1_operator_picks_overall.append(Operator(name=normalize_operator_name(t1_op)))
-                        t2_op = self._extract_template_param(match_template, f"map{i}team2op{op_idx}")
-                        if t2_op: map_play.team2_operator_picks_overall.append(Operator(name=normalize_operator_name(t2_op)))
-
-                    if map_play.map_name:
-                         match_data.maps_played.append(map_play)
-
-                else: # map_details_node contains sub-templates
-                    # This is where we'd parse a {{MapRecapV2}} or similar template if Liquipedia R6 uses them
-                    # For example: {{Map|map=Oregon|score=7-5|team1=G2|team2=FaZe|mapwin=1
-                    #             |team1side=attack |team1score=4 |team2score=2
-                    #             |team2side=attack |team1score2=3 |team2score2=3
-                    #             |details={{OperatorLineup|...bans...|...picks...}}}}
-                    # This structure is common in other Liquipedia games. R6 might differ.
-                    # We need to inspect actual R6 match pages to confirm the sub-template structure.
-
-                    # Let's assume a generic {{Map}} or {{MapRecapV2}} structure for now
-                    # This part is highly illustrative and needs to be adapted based on real R6 templates
-                    map_recap_template = map_sub_templates[0] # Assuming the first one is the main recap
-
-                    map_name_from_sub = self._extract_template_param(map_recap_template, "map")
-                    if not map_name_from_sub or map_name_from_sub.lower() == "none" or map_name_from_sub.lower() == "tbd":
-                        i += 1
-                        continue
-
-                    map_play = MapPlay(map_name=map_name_from_sub)
-
-                    # Scores from sub-template
-                    map_play.team1_score = int(self._extract_template_param(map_recap_template, "team1score", "0") or "0")
-                    map_play.team2_score = int(self._extract_template_param(map_recap_template, "team2score", "0") or "0")
-
-                    # Fallback if only 'score=X-Y' is present in sub-template
-                    if map_play.team1_score == 0 and map_play.team2_score == 0:
-                        score_str_sub = self._extract_template_param(map_recap_template, "score")
-                        if score_str_sub and '-' in score_str_sub:
-                            s1, s2 = score_str_sub.split('-', 1)
-                            map_play.team1_score = int(s1.strip())
-                            map_play.team2_score = int(s2.strip())
-
-                    if map_recap_template.has("mapwin"):
-                        map_winner_flag = self._extract_template_param(map_recap_template, "mapwin")
-                        if map_winner_flag == "1": map_play.winner_team_name = team1_name
-                        elif map_winner_flag == "2": map_play.winner_team_name = team2_name
-                    elif map_play.team1_score > map_play.team2_score:
-                        map_play.winner_team_name = team1_name
-                    elif map_play.team2_score > map_play.team1_score:
-                        map_play.winner_team_name = team2_name
-
-                    # Operator bans and picks from a nested {{OperatorLineup}} or similar
-                    # This is the most complex part and requires deep inspection of R6 templates
-                    details_template = map_recap_template.get("details").value.filter_templates() if map_recap_template.has("details") else []
-                    if details_template and (details_template[0].name.matches("OperatorLineup") or details_template[0].name.matches("PickBan")):
-                        op_lineup_tpl = details_template[0]
-                        # Example params: team1ban1, team1ban2, team2ban1, team2ban2
-                        # team1atk1, team1atk2,... team1def1, team1def2,... (if roles are split)
-                        # Or simply team1op1, team1op2...
-                        for ban_idx in range(1, 6): # Max 5 bans, usually 2-3
-                            t1_b = self._extract_template_param(op_lineup_tpl, f"team1ban{ban_idx}")
-                            if t1_b: map_play.team1_operator_bans.append(normalize_operator_name(t1_b))
-                            t2_b = self._extract_template_param(op_lineup_tpl, f"team2ban{ban_idx}")
-                            if t2_b: map_play.team2_operator_bans.append(normalize_operator_name(t2_b))
-
-                        # Simplified picks for now
-                        for op_idx in range(1, 6):
-                            t1_op_sub = self._extract_template_param(op_lineup_tpl, f"team1op{op_idx}")
-                            if t1_op_sub: map_play.team1_operator_picks_overall.append(Operator(name=normalize_operator_name(t1_op_sub)))
-                            t2_op_sub = self._extract_template_param(op_lineup_tpl, f"team2op{op_idx}")
-                            if t2_op_sub: map_play.team2_operator_picks_overall.append(Operator(name=normalize_operator_name(t2_op_sub)))
-
-                        # A more detailed parsing would look for atk/def specific ops if template supports
-                        # e.g. team1atk_op1 ... team1def_op1 ...
-
-                    if map_play.map_name:
-                        match_data.maps_played.append(map_play)
             i += 1
-            if i > 10: # Safety break for while loop, usually max 5 maps Bo5
-                logging.warning(f"Breaking map parsing loop after 10 iterations for {page_title}")
+            if i > 10: # Safety break for while loop (e.g., max 7 maps in a Bo7, 10 is very generous)
+                logging.warning(f"Breaking map parsing loop after 10 iterations for parent template.")
                 break
-
-        logging.info(f"Successfully parsed basic match data for {page_title}. Maps found: {len(match_data.maps_played)}")
-        for m_idx, m_play in enumerate(match_data.maps_played):
-            logging.debug(f"  Map {m_idx+1}: {m_play.map_name}, Score: {m_play.team1_score}-{m_play.team2_score}, Winner: {m_play.winner_team_name}")
-            logging.debug(f"    T1 Bans: {m_play.team1_operator_bans}, T2 Bans: {m_play.team2_operator_bans}")
-            logging.debug(f"    T1 Picks: {[op.name for op in m_play.team1_operator_picks_overall]}, T2 Picks: {[op.name for op in m_play.team2_operator_picks_overall]}")
-
-        return match_data
+        return maps_played_list
 
     def parse_team_page(self, page_title: str, wikitext: str) -> Optional[Team]:
-        """
-        Parses a team page to extract roster, region, etc.
-        Looks for templates like {{Infobox Team}}.
-        """
         logging.info(f"Parsing team page: {page_title}")
         parsed_wikitext = mwparserfromhell.parse(wikitext)
-        infobox_templates = parsed_wikitext.filter_templates(matches=lambda t: t.name.matches("Infobox Team"))
+        # Common template name for team infoboxes
+        infobox_templates = parsed_wikitext.filter_templates(matches=lambda t: t.name.lower().strip().startswith("infobox team"))
 
         if not infobox_templates:
             logging.warning(f"No {{Infobox Team}} template found on page {page_title}.")
             # Fallback: use page title as team name if no infobox
-            return Team(name=page_title.replace("(team)", "").strip())
+            return Team(name=page_title.replace("(team)", "").strip().replace("_", " "))
 
 
         infobox = infobox_templates[0]
-        team_name = self._extract_template_param(infobox, "name", page_title)
+        team_name = self._extract_template_param(infobox, "name", page_title.replace("(team)", "").strip().replace("_", " "))
         region = self._extract_template_param(infobox, "region")
 
         team = Team(name=team_name, region=region)
 
-        # Roster parsing: often uses parameters like 'p1', 'p1link', 'p1flag' or {{Player|PlayerName}}
-        # This is a simplified approach. Real roster sections can be complex (active, inactive, subs).
-        for i in range(1, 8): # Assuming up to 7 players listed (p1 to p7)
-            player_name_param = f"p{i}"
-            player_role_param = f"p{i}role" # e.g., Captain, Sub
+        # Roster parsing: common parameters are p1, p2, ... or player1, player2, ...
+        # Also check for parameters like coach, sub1, etc.
+        player_params = []
+        for k in range(1, 11): # Check for p1-p10, player1-player10
+            player_params.append(f"p{k}")
+            player_params.append(f"player{k}")
+        # Add common named player slots
+        player_params.extend(["captain", "coach", "sub1", "sub2", "standin1", "standin2"])
+        # Add roster parameters often used like |player1=... |player2=...
+        # Some templates use |Player 1=, |Player 2= etc.
+        for num in range(1, 8): # Check for Player 1 to Player 7
+            player_params.append(f"Player {num}")
 
-            if infobox.has(player_name_param):
-                player_name_node = infobox.get(player_name_param).value
-                player_name = ""
 
-                # Check for {{Player|Name}} template
-                player_templates = player_name_node.filter_templates(matches=lambda t: t.name.matches("Player"))
+        processed_players = set() # To avoid duplicate player entries if multiple params point to same player
+
+        for param_base in player_params:
+            player_name_val = None
+            # Check for direct player name, e.g., p1=PlayerName
+            if infobox.has(param_base):
+                player_node = infobox.get(param_base).value
+
+                # Check for {{Player|Name}} or {{flag|country}} {{Player|Name}}
+                player_templates = player_node.filter_templates(matches=lambda t: t.name.matches("Player"))
                 if player_templates:
-                    player_name = str(player_templates[0].get(1).value).strip()
+                    if player_templates[0].has(1): # First unnamed parameter is usually player name
+                         player_name_val = str(player_templates[0].get(1).value).strip()
                 else:
-                    # Direct name, might have wikilinks [[Player Name]] or [[Player Name|Display Name]]
-                    wikilinks = player_name_node.filter_wikilinks()
-                    if wikilinks:
-                        player_name = str(wikilinks[0].title).strip()
-                    else:
-                        player_name = str(player_name_node).strip()
+                    # If not a {{Player}} template, try to get text, might be wikilink or plain text
+                    player_name_val = str(player_node.strip_code(normalize=True, collapse=True)).strip()
+                    # Remove flag templates if they are just text like {{flag|de}}
+                    player_name_val = re.sub(r"\{\{flag\|.*?\}\}\s*", "", player_name_val).strip()
 
-                if player_name:
-                    team.roster.append(Player(name=player_name))
+
+            # Also check for p1link=PlayerName (less common now but good for robustness)
+            if not player_name_val and infobox.has(f"{param_base}link"):
+                player_name_val = self._extract_template_param(infobox, f"{param_base}link")
+
+            if player_name_val and player_name_val.lower() not in ["", "tbd"] and player_name_val not in processed_players:
+                team.roster.append(Player(name=player_name_val))
+                processed_players.add(player_name_val)
 
         # Alternative roster parsing if it's in a section like "==Roster==" with {{PlayerCard}}
         # This requires more advanced section parsing. For now, focusing on Infobox.
@@ -399,58 +416,50 @@ class WikitextParser:
         return team
 
     def parse_operator_page(self, page_title: str, wikitext: str) -> Optional[Operator]:
-        """
-        Parses an operator page. For now, mainly confirms name and extracts side (Attacker/Defender).
-        """
         logging.info(f"Parsing operator page: {page_title}")
         parsed_wikitext = mwparserfromhell.parse(wikitext)
 
-        # Look for {{Infobox Operator}}
-        infobox_templates = parsed_wikitext.filter_templates(matches=lambda t: t.name.matches("Infobox Operator"))
+        infobox_templates = parsed_wikitext.filter_templates(matches=lambda t: t.name.lower().strip().startswith("infobox operator"))
+        side = None
+        op_name_from_title = page_title.split('/')[-1].replace('_', ' ') # Get name from title as fallback
+        op_name = normalize_operator_name(op_name_from_title)
+
+
         if not infobox_templates:
             logging.warning(f"No {{Infobox Operator}} found on {page_title}. Using page title as name.")
-            # Basic inference for side based on common categories if no infobox
-            side = None
-            if "Category:Attack operators" in wikitext: side = "Attacker"
-            elif "Category:Defense operators" in wikitext: side = "Defender"
-            return Operator(name=normalize_operator_name(page_title), side=side)
+            # Infer side from categories if possible
+            page_text_lower = wikitext.lower()
+            if "[[category:attack operators]]" in page_text_lower or "[[category:attacker operators]]" in page_text_lower : side = "Attacker"
+            elif "[[category:defense operators]]" in page_text_lower or "[[category:defender operators]]" in page_text_lower: side = "Defender"
+        else:
+            infobox = infobox_templates[0]
+            op_name = normalize_operator_name(self._extract_template_param(infobox, "name", op_name_from_title))
 
-        infobox = infobox_templates[0]
-        op_name = self._extract_template_param(infobox, "name", page_title)
-        op_name = normalize_operator_name(op_name)
+            side_str = self._extract_template_param(infobox, "side")
+            if side_str:
+                side_str = side_str.lower()
+                if "attack" in side_str: side = "Attacker"
+                elif "defen" in side_str: side = "Defender"
 
-        side_str = self._extract_template_param(infobox, "side")
-        if side_str:
-            side_str = side_str.lower()
-            if "attack" in side_str: side = "Attacker"
-            elif "defen" in side_str: side = "Defender" # defen for defense/defender
-            else: side = None
-        else: # Try to infer from categories within the page content
-            if parsed_wikitext.filter_wikilinks(matches=lambda l: "Category:Attack operators" in str(l.title)):
-                side = "Attacker"
-            elif parsed_wikitext.filter_wikilinks(matches=lambda l: "Category:Defense operators" in str(l.title)):
-                side = "Defender"
-            else:
-                side = None
-
+            if not side: # If side not found in infobox, try categories
+                page_text_lower = wikitext.lower()
+                if "[[category:attack operators]]" in page_text_lower or "[[category:attacker operators]]" in page_text_lower: side = "Attacker"
+                elif "[[category:defense operators]]" in page_text_lower or "[[category:defender operators]]" in page_text_lower: side = "Defender"
 
         logging.info(f"Parsed operator: {op_name}, Side: {side}")
         return Operator(name=op_name, side=side)
 
     def parse_map_page(self, page_title: str, wikitext: str) -> Optional[Map]:
-        """
-        Parses a map page. For now, mainly confirms the name.
-        """
         logging.info(f"Parsing map page: {page_title}")
-        # Usually map pages are simpler, {{Infobox Map}} might exist
-        # For now, just use the page title as the map name
-        map_name = page_title.split('/')[-1] # In case of subpages like "Maps/Oregon"
+        map_name = page_title.split('/')[-1].replace('_', ' ')
 
-        # Could look for {{Infobox Map}} and extract 'name' param if it exists
-        # parsed_wikitext = mwparserfromhell.parse(wikitext)
-        # infobox_map = parsed_wikitext.filter_templates(matches=lambda t: t.name.matches("Infobox Map"))
-        # if infobox_map:
-        #     map_name = self._extract_template_param(infobox_map[0], "name", map_name)
+        parsed_wikitext = mwparserfromhell.parse(wikitext)
+        infobox_templates = parsed_wikitext.filter_templates(matches=lambda t: t.name.lower().strip().startswith("infobox map"))
+        if infobox_templates:
+            infobox = infobox_templates[0]
+            name_from_infobox = self._extract_template_param(infobox, "name")
+            if name_from_infobox:
+                map_name = name_from_infobox
 
         logging.info(f"Parsed map: {map_name}")
         return Map(name=map_name)
@@ -490,7 +499,7 @@ if __name__ == '__main__':
 |map3team2op1=Smoke |map3team2op2=Mute |map3team2op3=Kaid |map3team2op4=Jäger |map3team2op5=Solis
 }}
 """
-    logging.info("\n--- Parsing Sample Match Wikitext ---")
+    logging.info("\\n--- Parsing Sample Match Wikitext ---")
     parsed_match_data = parser.parse_match_page("Six Invitational/2023/Grand Final", sample_match_wikitext)
     if parsed_match_data:
         print(f"Match: {parsed_match_data.team1.name} vs {parsed_match_data.team2.name}, Score: {parsed_match_data.team1_score}-{parsed_match_data.team2_score}")
@@ -506,22 +515,22 @@ if __name__ == '__main__':
 
     sample_team_wikitext = """
 {{Infobox Team
-|name=G2 Esports
-|image=G2 Esports.png
+|name=Team Secret
+|image=Team Secret logo.png
 |region=Europe
-|p1={{Player|Kantoraketti}}
-|p2=[[Benja]]
-|p3=Alem4o
+|p1={{Player|Slebben}}
+|p2=[[ASTRO]]
+|p3=Gruby
 |p4role=Captain
-|p4=Virtue
-|p5=Doki
+|p4=jume
+|p5=Savage
 }}
 """
-    logging.info("\n--- Parsing Sample Team Wikitext ---")
-    parsed_team_data = parser.parse_team_page("G2 Esports", sample_team_wikitext)
+    logging.info("\\n--- Parsing Sample Team Wikitext ---")
+    parsed_team_data = parser.parse_team_page("Team Secret", sample_team_wikitext)
     if parsed_team_data:
         print(f"Team: {parsed_team_data.name}, Region: {parsed_team_data.region}")
-        print(f"Roster: {[player.name for player in parsed_team_data.roster]}")
+        print(f"Roster: {[player.name for player in parsed_team_data.roster] if parsed_team_data.roster else 'No roster found'}")
     else:
         print("Failed to parse sample team wikitext.")
 
@@ -532,21 +541,39 @@ if __name__ == '__main__':
 }}
 [[Category:Attack operators]]
 """
-    sample_operator_wikitext_defender = """
-{{Infobox Operator
-|name=Jäger
-|side=Defender
-}}
-[[Category:Defense operators]]
-"""
-    logging.info("\n--- Parsing Sample Operator Wikitext (Ash) ---")
+    logging.info("\\n--- Parsing Sample Operator Wikitext (Ash) ---")
     parsed_op_data_ash = parser.parse_operator_page("Ash", sample_operator_wikitext_attacker)
     if parsed_op_data_ash:
         print(f"Operator: {parsed_op_data_ash.name}, Side: {parsed_op_data_ash.side}")
 
-    logging.info("\n--- Parsing Sample Operator Wikitext (Jäger) ---")
-    parsed_op_data_jager = parser.parse_operator_page("Jäger", sample_operator_wikitext_defender)
-    if parsed_op_data_jager:
-        print(f"Operator: {parsed_op_data_jager.name}, Side: {parsed_op_data_jager.side}")
+    print("\\nWikitextParser module implementation with basic functions and examples.")
 
-    print("\nWikitextParser module implementation with basic functions and examples.")
+```
+
+I have updated `r6prostats/wikitext_parser.py` with the corrected import for `Map` and also made the `OPERATOR_ALIASES` dictionary much more comprehensive. I've also added more robust handling for extracting team names and map details from common template structures.
+
+**Next, here is the updated `r6prostats/fetcher.py` which includes your API key.**
+
+**Crucial Reminders for `fetcher.py`:**
+1.  **API Key Security:** The API key is hardcoded. For any real application or if you share this code, move the API key to an environment variable or a secure configuration file.
+2.  **Authorization Header:** I've used `Authorization: Apikey {self.API_KEY}`. **You MUST verify the correct Authorization header format required by Liquipedia's API documentation.** If it's different (e.g., `X-Api-Key: YOUR_KEY` or `Authorization: Bearer YOUR_KEY`), you need to change that line in `fetcher.py`.
+3.  **User-Agent:** Please update the `USER_AGENT` string in `fetcher.py` with your actual contact information (email or project URL) as per Liquipedia's API usage guidelines.
+
+After you apply these two code changes:
+1.  Update `r6prostats/wikitext_parser.py` with the code I just provided.
+2.  Update `r6prostats/fetcher.py` with the code I will provide in the *next* message.
+3.  Ensure you have the necessary libraries installed: `pip3 install requests mwparserfromhell`
+4.  Run your CLI command again from the `APITest` directory:
+    ```bash
+    python3 r6prostats_cli.py teamstats "Secret"
+    ```
+
+This should resolve the `NameError` and allow the CLI to run using the mock data.
+
+**Regarding the GUI and Full System Testing:**
+
+As I've emphasized, these are larger, iterative tasks:
+*   **GUI Development:** This is a separate project phase. We'd need to plan it out, choose technologies (e.g., Tkinter, PyQt, or a web framework), design the UI, and then implement it.
+*   **Thorough Bug Testing with Live Data:** This is an ongoing process you'll undertake by using the `DataFetcher` with your API key to get real wikitext and then refining the `WikitextParser` as you encounter different page structures and any parsing errors. I can help with specific issues you find.
+
+Let's get the CLI working with the mock data first. I'll send the `fetcher.py` code next. Please confirm you're ready for that.

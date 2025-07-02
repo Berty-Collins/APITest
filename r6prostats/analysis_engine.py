@@ -185,67 +185,9 @@ class AnalysisEngine:
 
 
 if __name__ == '__main__':
-    # --- Mock Data for Testing ---
-    # Teams
-    g2 = Team(name="G2 Esports")
-    faze = Team(name="FaZe Clan")
-    ssg = Team(name="SSG")
+    from .mock_data import ALL_MOCK_MATCHES # Import mock data
 
-    # Operators (simplified)
-    thermite = Operator(name="Thermite")
-    hibana = Operator(name="Hibana")
-    ace = Operator(name="Ace")
-    kaid = Operator(name="Kaid")
-    mira = Operator(name="Mira")
-    smoke = Operator(name="Smoke")
-    mute = Operator(name="Mute")
-    jager = Operator(name="Jäger")
-    valkyrie = Operator(name="Valkyrie")
-    thatcher = Operator(name="Thatcher")
-
-    # Match 1: G2 vs FaZe
-    match1_map1 = MapPlay(
-        map_name="Oregon", winner_team_name="G2 Esports", team1_score=7, team2_score=5,
-        team1_operator_bans=["Kaid", "Mira"], team2_operator_bans=["Thatcher", "Ace"],
-        team1_operator_picks_overall=[thermite, hibana, smoke, mute, jager], # G2's picks
-        team2_operator_picks_overall=[ace, thatcher, valkyrie, kaid, mira]  # FaZe's picks
-    )
-    match1_map2 = MapPlay(
-        map_name="Bank", winner_team_name="FaZe Clan", team1_score=6, team2_score=8,
-        team1_operator_bans=["Mira", "Valkyrie"], team2_operator_bans=["Thermite", "Hibana"],
-        team1_operator_picks_overall=[ace, thatcher, smoke, mute, jager], # G2's picks
-        team2_operator_picks_overall=[thermite, hibana, valkyrie, kaid, mira]  # FaZe's picks
-    )
-    match1 = MatchData(
-        match_id="match1", team1=g2, team2=faze, team1_score=1, team2_score=1, # Maps won
-        maps_played=[match1_map1, match1_map2], tournament_name="Test Tournament 1"
-    )
-
-    # Match 2: G2 vs SSG
-    match2_map1 = MapPlay(
-        map_name="Oregon", winner_team_name="G2 Esports", team1_score=7, team2_score=3,
-        team1_operator_bans=["Kaid", "Smoke"], team2_operator_bans=["Ace", "Thermite"],
-        team1_operator_picks_overall=[hibana, thatcher, mute, jager, valkyrie], # G2's picks
-        team2_operator_picks_overall=[ace, thermite, mira, smoke, kaid] # SSG's picks
-    )
-    match2 = MatchData(
-        match_id="match2", team1=g2, team2=ssg, team1_score=1, team2_score=0,
-        maps_played=[match2_map1], tournament_name="Test Tournament 2"
-    )
-
-    # Match 3: FaZe vs SSG
-    match3_map1 = MapPlay(
-        map_name="Clubhouse", winner_team_name="FaZe Clan", team1_score=7, team2_score=4,
-        team1_operator_bans=["Thermite", "Kaid"], team2_operator_bans=["Thatcher", "Mira"],
-        team1_operator_picks_overall=[ace, hibana, smoke, mute, jager], # FaZe's picks
-        team2_operator_picks_overall=[thermite, thatcher, valkyrie, kaid, mira]  # SSG's picks
-    )
-    match3 = MatchData(
-        match_id="match3", team1=faze, team2=ssg, team1_score=1, team2_score=0,
-        maps_played=[match3_map1], tournament_name="Test Tournament 3"
-    )
-
-    all_test_matches = [match1, match2, match3]
+    all_test_matches = ALL_MOCK_MATCHES
     engine = AnalysisEngine(all_matches=all_test_matches)
 
     # --- Test Team Map Preferences ---
