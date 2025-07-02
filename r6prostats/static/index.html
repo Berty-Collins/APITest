@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R6ProStats</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>R6ProStats Analyzer</h1>
+    </header>
+    <main>
+        <div class="controls">
+            <h2>Controls</h2>
+            <div class="input-group">
+                <label for="teamA">Your Team (Team A):</label>
+                <input type="text" id="teamA" value="G2 Esports">
+            </div>
+            <div class="input-group">
+                <label for="teamB">Opponent Team (Team B):</label>
+                <input type="text" id="teamB" value="FaZe Clan">
+            </div>
+            <div class="input-group">
+                <label for="mapName">Map (for Ban Suggestions):</label>
+                <input type="text" id="mapName" value="Oregon">
+            </div>
+            <div class="input-group">
+                <label for="dataSource">Data Source:</label>
+                <select id="dataSource">
+                    <option value="mock" selected>Mock Data</option>
+                    <option value="live">Live Data (Specify Pages)</option>
+                </select>
+            </div>
+            <div class="input-group" id="tournamentPagesGroup" style="display: none;">
+                <label for="tournamentPages">Tournament/Match Page Titles (comma-separated for Live Data):</label>
+                <input type="text" id="tournamentPages" placeholder="e.g., Six Invitational/2023/Playoffs/Grand_Final, Some_Other_Match_Page">
+            </div>
+             <div class="input-group" id="teamFiltersGroup" style="display: none;">
+                <label for="teamFilters">Team Filters (comma-separated, for Live Data primary focus):</label>
+                <input type="text" id="teamFilters" placeholder="e.g., G2 Esports,FaZe Clan (optional)">
+            </div>
+            <button id="getTeamStatsBtn">Get Team A Stats</button>
+            <button id="getMapSuggestionsBtn">Suggest Maps (A vs B)</button>
+            <button id="getBanSuggestionsBtn">Suggest Bans (A vs B on Map)</button>
+        </div>
+
+        <div class="results">
+            <h2>Results</h2>
+            <div id="loadingIndicator" style="display: none;">Loading...</div>
+
+            <section id="teamStatsSection">
+                <h3>Team Statistics for <span id="statsTeamName"></span></h3>
+                <div id="teamStatsOutput"></div>
+            </section>
+
+            <section id="mapSuggestionsSection">
+                <h3>Map Suggestions (<span id="mapSuggestTeams"></span>)</h3>
+                <div id="mapSuggestionsOutput"></div>
+            </section>
+
+            <section id="banSuggestionsSection">
+                <h3>Operator Ban Suggestions (<span id="banSuggestTeamsMap"></span>)</h3>
+                <div id="banSuggestionsOutput"></div>
+            </section>
+        </div>
+    </main>
+    <footer>
+        <p>R6ProStats Alpha</p>
+    </footer>
+    <script src="script.js"></script>
+</body>
+</html>

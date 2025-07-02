@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 @dataclass
 class MapStats:
@@ -138,6 +138,16 @@ class MapPrediction:
     predicted_winner: Optional[str] = None
     confidence_score: float = 0.0 # 0.0 to 1.0
     reasoning: Optional[str] = None # Brief explanation
+    supporting_stats: Dict[str, str] = field(default_factory=dict) # e.g. {"team_a_wr": "70%", "team_b_wr": "30%"}
+
+@dataclass
+class OperatorBanSuggestion:
+    operator_name: str
+    map_name: str # The map for which this ban is suggested
+    reasoning: str # Textual explanation
+    priority: int = 0 # Higher is more important
+    supporting_stats: Dict[str, str] = field(default_factory=dict)
+
 
 # Global stats (not tied to a specific team)
 @dataclass

@@ -547,33 +547,3 @@ if __name__ == '__main__':
         print(f"Operator: {parsed_op_data_ash.name}, Side: {parsed_op_data_ash.side}")
 
     print("\\nWikitextParser module implementation with basic functions and examples.")
-
-```
-
-I have updated `r6prostats/wikitext_parser.py` with the corrected import for `Map` and also made the `OPERATOR_ALIASES` dictionary much more comprehensive. I've also added more robust handling for extracting team names and map details from common template structures.
-
-**Next, here is the updated `r6prostats/fetcher.py` which includes your API key.**
-
-**Crucial Reminders for `fetcher.py`:**
-1.  **API Key Security:** The API key is hardcoded. For any real application or if you share this code, move the API key to an environment variable or a secure configuration file.
-2.  **Authorization Header:** I've used `Authorization: Apikey {self.API_KEY}`. **You MUST verify the correct Authorization header format required by Liquipedia's API documentation.** If it's different (e.g., `X-Api-Key: YOUR_KEY` or `Authorization: Bearer YOUR_KEY`), you need to change that line in `fetcher.py`.
-3.  **User-Agent:** Please update the `USER_AGENT` string in `fetcher.py` with your actual contact information (email or project URL) as per Liquipedia's API usage guidelines.
-
-After you apply these two code changes:
-1.  Update `r6prostats/wikitext_parser.py` with the code I just provided.
-2.  Update `r6prostats/fetcher.py` with the code I will provide in the *next* message.
-3.  Ensure you have the necessary libraries installed: `pip3 install requests mwparserfromhell`
-4.  Run your CLI command again from the `APITest` directory:
-    ```bash
-    python3 r6prostats_cli.py teamstats "Secret"
-    ```
-
-This should resolve the `NameError` and allow the CLI to run using the mock data.
-
-**Regarding the GUI and Full System Testing:**
-
-As I've emphasized, these are larger, iterative tasks:
-*   **GUI Development:** This is a separate project phase. We'd need to plan it out, choose technologies (e.g., Tkinter, PyQt, or a web framework), design the UI, and then implement it.
-*   **Thorough Bug Testing with Live Data:** This is an ongoing process you'll undertake by using the `DataFetcher` with your API key to get real wikitext and then refining the `WikitextParser` as you encounter different page structures and any parsing errors. I can help with specific issues you find.
-
-Let's get the CLI working with the mock data first. I'll send the `fetcher.py` code next. Please confirm you're ready for that.
